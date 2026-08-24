@@ -307,24 +307,93 @@ const Terminal = {
                 architecture.alpineFilename
             );
 
+            const alpineMirrorUrl = buildUrl(
+                ...strings.protocol,
+                "mirrors", ".", "aliyun", ".", "com",
+                "/alpine/v3.21/releases/",
+                architecture.alpineDirectory,
+                "/",
+                architecture.alpineFilename
+            );
+
+            const ghMirrorBase = buildUrl(
+                ...strings.protocol,
+                "mirror", ".", "ghproxy", ".", "com", "/",
+                ...strings.protocol
+            );
+
+            const rawGithubMirrorBase = buildUrl(
+                ghMirrorBase,
+                ...strings.rawGithubDomain,
+                "/",
+                ...strings.acodeFoundation,
+                "/",
+                ...strings.acodeRepo,
+                "/main/src/plugins/proot/libs/"
+            );
+
+            const githubReleaseMirrorBase = buildUrl(
+                ghMirrorBase,
+                ...strings.githubDomain,
+                "/",
+                ...strings.bajrangCoder,
+                "/",
+                ...strings.acodexServer,
+                "/releases/latest/download/"
+            );
+
+            const axsMirrorUrl = buildUrl(
+                githubReleaseMirrorBase,
+                "axs-pie-android-",
+                architecture.axsArchitecture
+            );
+
+            const libraryMirrorBaseUrl = buildUrl(
+                rawGithubMirrorBase,
+                architecture.libraryDirectory,
+                "/"
+            );
+
+            const libprootMirror = buildUrl(
+                libraryMirrorBaseUrl,
+                ...strings.libraries.proot
+            );
+
+            const libTallocMirror = buildUrl(
+                libraryMirrorBaseUrl,
+                ...strings.libraries.talloc
+            );
+
+            const prootMirrorUrl = buildUrl(
+                libraryMirrorBaseUrl,
+                ...strings.libraries.prootXed
+            );
+
+            const libproot32Mirror = architecture.hasLibproot32
+                ? buildUrl(
+                    libraryMirrorBaseUrl,
+                    ...strings.libraries.proot32
+                )
+                : null;
+
                 logger("⬇️  Downloading sandbox filesystem...");
-                await downloadFile(alpineUrl, cordova.file.dataDirectory + "alpine.tar.gz", "Sandbox filesystem");
+                await downloadFile(alpineUrl, cordova.file.dataDirectory + "alpine.tar.gz", "Sandbox filesystem", [alpineMirrorUrl]);
 
                 logger("⬇️  Downloading axs...");
-                await downloadFile(axsUrl, cordova.file.dataDirectory + "axs", "AXS");
+                await downloadFile(axsUrl, cordova.file.dataDirectory + "axs", "AXS", [axsMirrorUrl]);
 
                 logger("⬇️  Downloading compatibility layer...");
-                await downloadFile(prootUrl, cordova.file.dataDirectory + "libproot-xed.so", "Compatibility layer");
+                await downloadFile(prootUrl, cordova.file.dataDirectory + "libproot-xed.so", "Compatibility layer", [prootMirrorUrl]);
 
                 logger("⬇️  Downloading supporting library...");
-                await downloadFile(libTalloc, cordova.file.dataDirectory + "libtalloc.so.2", "Supporting library");
+                await downloadFile(libTalloc, cordova.file.dataDirectory + "libtalloc.so.2", "Supporting library", [libTallocMirror]);
 
                 if (libproot != null) {
-                    await downloadFile(libproot, cordova.file.dataDirectory + "libproot.so", "proot loader");
+                    await downloadFile(libproot, cordova.file.dataDirectory + "libproot.so", "proot loader", [libprootMirror]);
                 }
 
                 if (libproot32 != null) {
-                    await downloadFile(libproot32, cordova.file.dataDirectory + "libproot32.so", "32-bit proot loader");
+                    await downloadFile(libproot32, cordova.file.dataDirectory + "libproot32.so", "32-bit proot loader", libproot32Mirror ? [libproot32Mirror] : []);
                 }
 
                 logger("✅  All downloads completed");
@@ -678,14 +747,28 @@ function setExec(path, executable) {
     });
 }
 
-function downloadFile(url, destination, label) {
-    return new Promise((resolve, reject) => {
-        cordova.plugin.http.downloadFile(
-            url, {}, {},
-            destination,
-            resolve,
-            (error) => reject(new Error(`${label} download failed: ${formatError(error)}`))
-        );
+function downloadFile(url, destination, label, mirrors = []) {
+    return new Promise(async (resolve, reject) => {
+        const urls = [url, ...mirrors];
+        let lastError = null;
+
+        for (const downloadUrl of urls) {
+            try {
+                await new Promise((res, rej) => {
+                    cordova.plugin.http.downloadFile(
+                        downloadUrl, {}, {},
+                        destination,
+                        res,
+                        (error) => rej(new Error(`${label} download failed: ${formatError(error)}`))
+                    );
+                });
+                return resolve();
+            } catch (error) {
+                lastError = error;
+                console.warn(`Download failed from ${downloadUrl}, trying next mirror...`);
+            }
+        }
+        reject(lastError || new Error(`${label} download failed from all mirrors`));
     });
 }
 

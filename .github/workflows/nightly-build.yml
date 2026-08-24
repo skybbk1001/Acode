@@ -61,7 +61,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    if: github.repository_owner == 'Acode-Foundation'
+    if: github.repository_owner == 'skybbk1001'
     permissions:
       contents: read
       pull-requests: read
